@@ -1,7 +1,7 @@
 """
     Author: Vishnu Vijay
     Description: Class that describes a Dubins Car agent of an MAS and contains helpful functions
-    
+    Date: Created - 4/21/24
 """
 
 #   IMPORTS: Public Library
@@ -11,57 +11,39 @@ import control
 #   CLASS
 class Dubins2D():
     # Constructor
-    def __init__(self, id, initial_state, dt):
+    def __init__(self, id, speed, initial_state, controller, dt):
         # Initialize Inputs
         self.id = id
+        self.V = speed
         self.state = initial_state
+        self.controller = controller
         self.dt = dt
+
+        # Control Saturation
+        self.input = 0
+        min_u = -40
+        max_u = 40
+        self.control_sat = lambda u : min(max(min_u, u), max_u)
         
         # System Dynamics
-        self.V = 1
-        self.x_dot = lambda x, u : np.array([[self.V * np.cos((x.flatten())[2])],
-                                             [self.V * np.sin((x.flatten())[2])],
-                                             [u]])
-        
-        self.recompute_A()
-        self.B = np.array([[0],
-                           [0],
-                           [1]])
-        
+        self.x_dot = lambda x, u : np.array([[self.V * np.cos(x.item(2))],
+                                             [self.V * np.sin(x.item(2))],
+                                             [u]])        
         self.step = 0
-        
-        # State and Input Cost Matrices
-        self.Q = np.diag([100, 100, 10])
-        self.R = np.diag([5])
-        
-        # Compute control gain
-        self.K, _, _ = control.lqr(self.A, self.B, self.Q, self.R)
 
 
     # Iterate State of Locally Linearized Car
-    def iterate_single(self, ref):
-        if self.step % 5 == 0:
-            self.recompute_A()
-            self.K, _, _ = control.lqr(self.A, self.B, self.Q, self.R)
-        u = -self.K @ (self.state - ref)
-        self.state = self.x_dot(self.state, u.item(0))
+    def iterate_single(self, ref=None):
+        if ref is None:
+            ref = np.zeros(self.state.shape)
+        unsat_input = self.controller( (self.state - ref), self.input )
+        self.input = self.control_sat( unsat_input )
+        self.state += self.x_dot(self.state, self.input)*self.dt
         self.step += 1
         return self.state
     
-    # Recompute the system matrix A
-    def recompute_A(self):
-        self.A = np.array([[0, 0, -self.V*np.sin( self.state.item(2) )],
-                           [0, 0, self.V*np.cos( self.state.item(2) )],
-                           [0, 0, 0]])
-    
-    # Set Neighbors
-    def set_neighbors(self, nbr_list):
-        self.nbr_list = nbr_list
-        self.num_nbr = len(nbr_list)
-        return None
-    
     # Print State
     def print(self):
-        print("Agent ", self.id)
+        print(f"Agent {self.id} at time {self.step}")
         print(self.state.flatten())
         return
